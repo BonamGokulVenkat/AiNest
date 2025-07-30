@@ -189,7 +189,6 @@ export const removeImageObject = async (req, res) => {
   }
 };
 
-
 export const resumeReview = async (req, res) => {
   try {
     const { userId } = await req.auth();
@@ -204,8 +203,8 @@ export const resumeReview = async (req, res) => {
       return res.json({ success: false, message: "Resume file size exceeds 5MB or no file uploaded." });
     }
 
-    // Read and parse PDF with pdfjs-dist
-    const data = new Uint8Array(fs.readFileSync(resume.path));
+    // ✅ Read PDF from buffer (in-memory)
+    const data = new Uint8Array(resume.buffer);
     const pdf = await getDocument({ data }).promise;
 
     let text = '';
@@ -218,10 +217,9 @@ export const resumeReview = async (req, res) => {
       text += pageText + '\n\n';
     }
 
-    // 🧼 Clean extracted text to prevent invalid UTF-8 errors
     const cleanText = text
-      .replace(/\x00/g, '') // remove null bytes
-      .replace(/[^\x09\x0A\x0D\x20-\x7E\xA0-\uFFFF]/g, ''); // remove non-printable characters
+      .replace(/\x00/g, '')
+      .replace(/[^\x09\x0A\x0D\x20-\x7E\xA0-\uFFFF]/g, '');
 
     const prompt = `Review the following resume and provide constructive feedback:\n\n${cleanText}`;
 
@@ -234,16 +232,16 @@ export const resumeReview = async (req, res) => {
 
     const content = response.choices[0].message.content;
 
-    // ✅ Added likes: []
+    // ✅ Insert empty array as likes
     await sql`
-  INSERT INTO creations (user_id, prompt, content, type, likes)
-  VALUES (${userId}, ${prompt}, ${content}, 'resume-review', ${'{}'}::text[])
-`;
+      INSERT INTO creations (user_id, prompt, content, type, likes)
+      VALUES (${userId}, ${prompt}, ${content}, 'resume-review', ${sql`ARRAY[]::text[]`})
+    `;
 
     res.json({ success: true, content });
 
   } catch (error) {
-    console.error("Resume review error:", error.message);
+    console.error("Resume review error:", error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
